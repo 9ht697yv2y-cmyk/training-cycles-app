@@ -539,31 +539,51 @@ export class DatabaseStorage {
   }
 
   /* ---- Копирование упражнений из одной тренировки в другую ---- */
-  async copyExercises(
-    fromWorkoutId: number,
-    toWorkoutId: number
-  ): Promise<Exercise[]> {
-    const source = await this.getExercisesForWorkout(fromWorkoutId);
-    if (source.length === 0) return [];
-    const target = await this.getExercisesForWorkout(toWorkoutId);
-    const baseOrder = target.length;
-    const rows = source.map((ex, i) => ({
+async copyExercises(
+  fromWorkoutId: number,
+  toWorkoutId: number,
+  repsIncrement: number = 0
+): Promise<Exercise[]> {
+  if (fromWorkoutId === toWorkoutId) {
+    throw new Error("Нельзя копировать упражнения в ту же тренировку");
+  }
+
+  const source = await this.getExercisesForWorkout(fromWorkoutId);
+  if (source.length === 0) return [];
+
+  const target = await this.getExercisesForWorkout(toWorkoutId);
+  const baseOrder = target.length;
+
+  const rows = source.map((ex, i) => {
+    const repsRaw = ex.reps ?? "";
+    const repsNumber = Number.parseInt(repsRaw, 10);
+
+    return {
       workout_id: toWorkoutId,
       order: baseOrder + i + 1,
       name: ex.name,
       sets: ex.sets,
-      reps: ex.reps,
+      reps: Number.isNaN(repsNumber)
+        ? repsRaw
+        : String(repsNumber + repsIncrement),
       weight: ex.weight,
       rest_sec: ex.restSec,
       notes: ex.notes,
-    }));
-    const { data } = await supabase
-      .from(T.exercises)
-      .insert(rows)
-      .select("*")
-      .order("order");
-    return (data ?? []).map(mapExercise);
+    };
+  });
+
+  const { data, error } = await supabase
+    .from(T.exercises)
+    .insert(rows)
+    .select("*")
+    .order("order");
+
+  if (error) {
+    throw new Error(`Не удалось скопировать упражнения: ${error.message}`);
   }
+
+  return (data ?? []).map(mapExercise);
+}
 }
 
 export const storage = new DatabaseStorage();

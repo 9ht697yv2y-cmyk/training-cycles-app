@@ -357,45 +357,64 @@ export async function registerRoutes(
   });
 
   /* ---- Копирование упражнений (тренер) ---- */
+// POST /api/cycles/:id/copy-week — копирует упражнения из недели fromWeek
+// во все следующие недели цикла (по соответствующим тренировкам по номеру)
+// и для каждой следующей недели увеличивает reps на +1, +2, +3 и т.д.
+app.post("/api/cycles/:id/copy-week", requireCoach, async (req, res, next) => {
+  try {
+    const cycleId = parseInt(String(req.params.id), 10);
+    const fromWeek = parseInt(String(req.body.fromWeek), 10);
+    const user = (req as AuthedRequest).user!;
 
-  // POST /api/cycles/:id/copy-week — копирует упражнения из недели fromWeek
-  // во все остальные недели цикла (по соответствующим тренировкам по номеру)
-  app.post("/api/cycles/:id/copy-week", requireCoach, async (req, res, next) => {
-    try {
-      const cycleId = parseInt(String(req.params.id), 10);
-      const fromWeek = parseInt(String(req.body.fromWeek), 10);
-      const user = (req as AuthedRequest).user!;
-      const cycle = await storage.getCycle(cycleId);
-      if (!cycle) return res.status(404).json({ message: "Цикл не найден" });
-      if (cycle.coachId !== user.id) {
-        return res.status(403).json({ message: "Нет доступа" });
-      }
-      const weeks = await storage.getWeeksForCycle(cycleId);
-      const source = weeks.find((w) => w.weekNumber === fromWeek);
-      if (!source) {
-        return res.status(404).json({ message: "Неделя-источник не найдена" });
-      }
-      const sourceWorkouts = await storage.getWorkoutsForWeek(source.id);
-      const targetWeeks = weeks.filter((w) => w.weekNumber !== fromWeek);
-      let copied = 0;
-      for (const tw of targetWeeks) {
-        const twWorkouts = await storage.getWorkoutsForWeek(tw.id);
-        // сопоставляем тренировки по номеру
-        for (const sw of sourceWorkouts) {
-          const twMatch = twWorkouts.find(
-            (x) => x.workoutNumber === sw.workoutNumber
+    const cycle = await storage.getCycle(cycleId);
+    if (!cycle) {
+      return res.status(404).json({ message: "Цикл не найден" });
+    }
+
+    if (cycle.coachId !== user.id) {
+      return res.status(403).json({ message: "Нет доступа" });
+    }
+
+    const weeks = await storage.getWeeksForCycle(cycleId);
+    const source = weeks.find((w) => w.weekNumber === fromWeek);
+
+    if (!source) {
+      return res.status(404).json({ message: "Неделя-источник не найдена" });
+    }
+
+    const sourceWorkouts = await storage.getWorkoutsForWeek(source.id);
+
+    const targetWeeks = weeks
+      .filter((w) => w.weekNumber > fromWeek)
+      .sort((a, b) => a.weekNumber - b.weekNumber);
+
+    let copied = 0;
+
+    for (const tw of targetWeeks) {
+      const twWorkouts = await storage.getWorkoutsForWeek(tw.id);
+      const repsIncrement = tw.weekNumber - fromWeek;
+
+      for (const sw of sourceWorkouts) {
+        const twMatch = twWorkouts.find(
+          (x) => x.workoutNumber === sw.workoutNumber
+        );
+
+        if (twMatch) {
+          const added = await storage.copyExercises(
+            sw.id,
+            twMatch.id,
+            repsIncrement
           );
-          if (twMatch) {
-            const added = await storage.copyExercises(sw.id, twMatch.id);
-            copied += added.length;
-          }
+          copied += added.length;
         }
       }
-      res.json({ ok: true, copied });
-    } catch (e) {
-      next(e);
     }
-  });
+
+    res.json({ ok: true, copied });
+  } catch (e) {
+    next(e);
+  }
+});
 
   /* --------------------------- Логи клиента --------------------------- */
 
