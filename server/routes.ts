@@ -331,24 +331,27 @@ export async function registerRoutes(
   });
 
   app.patch("/api/exercises/:id", requireCoach, async (req, res, next) => {
-    try {
-      const id = parseInt(String(req.params.id), 10);
-      const ex = await storage.getExercise(id);
-      if (!ex) return res.status(404).json({ message: "Упражнение не найдено" });
-      const parsed = exerciseInputSchema.partial().parse(req.body);
-      const updated = await storage.updateExercise(id, {
-        name: parsed.name,
-        sets: parsed.sets ?? null,
-        reps: parsed.reps ?? null,
-        weight: parsed.weight ?? null,
-        restSec: parsed.restSec ?? null,
-        notes: parsed.notes ?? null,
-      });
-      res.json(updated);
-    } catch (e) {
-      next(e);
-    }
-  });
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    const ex = await storage.getExercise(id);
+    if (!ex) return res.status(404).json({ message: "Упражнение не найдено" });
+
+    const parsed = exerciseInputSchema.partial().parse(req.body);
+
+    const patch: any = {};
+    if ("name" in parsed) patch.name = parsed.name;
+    if ("sets" in parsed) patch.sets = parsed.sets ?? null;
+    if ("reps" in parsed) patch.reps = parsed.reps ?? null;
+    if ("weight" in parsed) patch.weight = parsed.weight ?? null;
+    if ("restSec" in parsed) patch.restSec = parsed.restSec ?? null;
+    if ("notes" in parsed) patch.notes = parsed.notes ?? null;
+
+    const updated = await storage.updateExercise(id, patch);
+    res.json(updated);
+  } catch (e) {
+    next(e);
+  }
+});
 
   app.delete("/api/exercises/:id", requireCoach, async (req, res) => {
     const id = parseInt(String(req.params.id), 10);
